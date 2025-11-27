@@ -5,6 +5,8 @@ const GEMINI_MODEL = 'gemini-2.5-flash';
 // Application State
 let tasks = JSON.parse(localStorage.getItem('roommateTasks')) || [];
 let members = JSON.parse(localStorage.getItem('roommateMembers')) || [];
+let expenses = JSON.parse(localStorage.getItem('roommateExpenses')) || [];
+let completedPayments = JSON.parse(localStorage.getItem('completedPayments')) || [];
 let currentVerificationTask = null;
 let uploadedFiles = [];
 let deadlineCheckInterval = null;
@@ -17,6 +19,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!localStorage.getItem('appInitialized')) {
         localStorage.removeItem('roommateTasks');
         localStorage.removeItem('roommateMembers');
+        localStorage.removeItem('roommateExpenses');
+        localStorage.removeItem('completedPayments');
         localStorage.setItem('appInitialized', 'true');
     }
     
@@ -32,10 +36,12 @@ function initializeApp() {
     setupNavigation();
     setupTaskForm();
     setupRoommateForm();
+    setupExpenseForm();
     populateMemberSelects();
     renderDashboard();
     renderAllTasks();
     renderMembers();
+    renderExpenses();
     setupModal();
 }
 
@@ -67,6 +73,9 @@ function switchPage(pageId) {
         renderAllTasks();
     } else if (pageId === 'members') {
         renderMembers();
+    } else if (pageId === 'expenses') {
+        renderExpenses();
+        renderSettlements();
     }
 }
 
@@ -123,6 +132,8 @@ function addRoommate() {
     // Refresh UI
     populateMemberSelects();
     renderMembers();
+    renderExpenses();
+    renderSettlements();
     
     alert(`Roommate "${name}" added successfully!`);
 }
@@ -149,22 +160,336 @@ function deleteRoommate(roommateId) {
     renderMembers();
     renderDashboard();
     renderAllTasks();
+    renderExpenses();
+    renderSettlements();
 }
 
 function populateMemberSelects() {
     const assignedToSelect = document.getElementById('task-assigned-to');
     const assignedBySelect = document.getElementById('task-assigned-by');
+    const expensePaidBySelect = document.getElementById('expense-paid-by');
     
-    [assignedToSelect, assignedBySelect].forEach(select => {
-        select.innerHTML = '<option value="">Select a roommate...</option>';
-        members.forEach(member => {
-            const option = document.createElement('option');
-            option.value = member.id;
-            option.textContent = member.name;
-            select.appendChild(option);
+    [assignedToSelect, assignedBySelect, expensePaidBySelect].forEach(select => {
+        if (select) {
+            select.innerHTML = '<option value="">Select a roommate...</option>';
+            members.forEach(member => {
+                const option = document.createElement('option');
+                option.value = member.id;
+                option.textContent = member.name;
+                select.appendChild(option);
+            });
+        }
+    });
+    
+    // Update expense split checkboxes
+    updateExpenseSplitCheckboxes();
+}
+
+function setupExpenseForm() {
+    const form = document.getElementById('expense-form');
+    if (form) {
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            createExpense();
         });
+    }
+}
+
+function updateExpenseSplitCheckboxes() {
+    const container = document.getElementById('expense-split-checkboxes');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    if (members.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-secondary);">Add roommates first to split expenses.</p>';
+        return;
+    }
+    
+    members.forEach(member => {
+        const checkboxDiv = document.createElement('div');
+        checkboxDiv.style.marginBottom = '0.5rem';
+        checkboxDiv.innerHTML = `
+            <label style="display: flex; align-items: center; cursor: pointer;">
+                <input type="checkbox" value="${member.id}" class="expense-split-checkbox" style="margin-right: 0.5rem; width: 18px; height: 18px; cursor: pointer;">
+                <span>${escapeHtml(member.name)}</span>
+            </label>
+        `;
+        container.appendChild(checkboxDiv);
     });
 }
+
+function createExpense() {
+    const description = document.getElementById('expense-description').value.trim();
+    const amount = parseFloat(document.getElementById('expense-amount').value);
+    const paidBy = parseInt(document.getElementById('expense-paid-by').value);
+    
+    const checkboxes = document.querySelectorAll('.expense-split-checkbox:checked');
+    const splitAmong = Array.from(checkboxes).map(cb => parseInt(cb.value));
+    
+    if (!description || !amount || amount <= 0) {
+        alert('Please fill in all fields with valid values.');
+        return;
+    }
+    
+    if (!paidBy) {
+        alert('Please select who paid for this expense.');
+        return;
+    }
+    
+    if (splitAmong.length === 0) {
+        alert('Please select at least one person to split the expense among.');
+        return;
+    }
+    
+    if (!splitAmong.includes(paidBy)) {
+        if (!confirm('The person who paid is not included in the split. Add them to the split?')) {
+            splitAmong.push(paidBy);
+        }
+    }
+    
+    const expense = {
+        id: Date.now(),
+        description,
+        amount,
+        paidBy,
+        splitAmong,
+        createdAt: Date.now()
+    };
+    
+    expenses.push(expense);
+    saveExpenses();
+    
+    document.getElementById('expense-form').reset();
+    updateExpenseSplitCheckboxes();
+    
+    renderExpenses();
+    renderSettlements();
+    renderDashboard();
+    
+    alert('Expense added successfully!');
+}
+
+function renderExpenses() {
+    const container = document.getElementById('expenses-list');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    if (expenses.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 2rem;">No expenses yet. Add your first expense above!</p>';
+        return;
+    }
+    
+    // Sort by most recent first
+    const sortedExpenses = [...expenses].sort((a, b) => b.createdAt - a.createdAt);
+    
+    sortedExpenses.forEach(expense => {
+        const expenseCard = createExpenseCard(expense);
+        container.appendChild(expenseCard);
+    });
+}
+
+function createExpenseCard(expense) {
+    const paidByMember = members.find(m => m.id === expense.paidBy);
+    const splitCount = expense.splitAmong.length;
+    const amountPerPerson = expense.amount / splitCount;
+    
+    const card = document.createElement('div');
+    card.className = 'task-card';
+    card.innerHTML = `
+        <div class="task-header">
+            <div>
+                <h3 class="task-title">${escapeHtml(expense.description)}</h3>
+                <p style="color: var(--text-secondary); margin-top: 0.25rem;">
+                    Paid by: ${paidByMember ? paidByMember.name : 'Unknown'}
+                </p>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--primary-color);">
+                    $${expense.amount.toFixed(2)}
+                </div>
+                <div style="font-size: 0.875rem; color: var(--text-secondary);">
+                    $${amountPerPerson.toFixed(2)} per person
+                </div>
+            </div>
+        </div>
+        <div class="task-info">
+            <div><strong>Split among:</strong> ${expense.splitAmong.map(id => {
+                const member = members.find(m => m.id === id);
+                return member ? member.name : 'Unknown';
+            }).join(', ')}</div>
+            <div><strong>Date:</strong> ${formatDateTime(new Date(expense.createdAt))}</div>
+        </div>
+        <div class="task-actions">
+            <button class="btn btn-danger btn-small delete-expense-btn" data-expense-id="${expense.id}">Delete</button>
+        </div>
+    `;
+    
+    const deleteBtn = card.querySelector('.delete-expense-btn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => {
+            if (confirm('Are you sure you want to delete this expense?')) {
+                deleteExpense(expense.id);
+            }
+        });
+    }
+    
+    return card;
+}
+
+function deleteExpense(expenseId) {
+    expenses = expenses.filter(e => e.id !== expenseId);
+    saveExpenses();
+    renderExpenses();
+    renderSettlements();
+    renderDashboard();
+}
+
+function calculateSettlements() {
+    // Calculate net balance for each person
+    const balances = {};
+    
+    // Initialize balances
+    members.forEach(member => {
+        balances[member.id] = 0;
+    });
+    
+    // Process each expense
+    expenses.forEach(expense => {
+        const amountPerPerson = expense.amount / expense.splitAmong.length;
+        
+        // Person who paid gets credited
+        balances[expense.paidBy] = (balances[expense.paidBy] || 0) + expense.amount;
+        
+        // People who should contribute get debited
+        expense.splitAmong.forEach(personId => {
+            balances[personId] = (balances[personId] || 0) - amountPerPerson;
+        });
+    });
+    
+    // Calculate who owes whom
+    const settlements = [];
+    const sortedBalances = Object.entries(balances)
+        .map(([id, balance]) => ({ id: parseInt(id), balance }))
+        .sort((a, b) => b.balance - a.balance);
+    
+    let i = 0;
+    let j = sortedBalances.length - 1;
+    
+    while (i < j) {
+        const debtor = sortedBalances[j];
+        const creditor = sortedBalances[i];
+        
+        if (Math.abs(debtor.balance) < 0.01 && creditor.balance < 0.01) {
+            break;
+        }
+        
+        const amount = Math.min(-debtor.balance, creditor.balance);
+        
+        if (amount > 0.01) {
+            settlements.push({
+                from: debtor.id,
+                to: creditor.id,
+                amount: amount
+            });
+            
+            debtor.balance += amount;
+            creditor.balance -= amount;
+        }
+        
+        if (Math.abs(debtor.balance) < 0.01) {
+            j--;
+        }
+        if (creditor.balance < 0.01) {
+            i++;
+        }
+    }
+    
+    return settlements;
+}
+
+function renderSettlements() {
+    const container = document.getElementById('settlements-list');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    if (expenses.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 2rem;">No expenses to calculate settlements.</p>';
+        return;
+    }
+    
+    if (members.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 2rem;">Add roommates to calculate settlements.</p>';
+        return;
+    }
+    
+    const settlements = calculateSettlements();
+    
+    if (settlements.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: var(--success-color); padding: 2rem; font-weight: 600;">✅ Everyone is settled up! No money needs to be transferred.</p>';
+        return;
+    }
+    
+    settlements.forEach(settlement => {
+        const fromMember = members.find(m => m.id === settlement.from);
+        const toMember = members.find(m => m.id === settlement.to);
+        
+        if (!fromMember || !toMember) return;
+        
+        const paymentId = `payment-${settlement.from}-${settlement.to}`;
+        const isCompleted = completedPayments.includes(paymentId);
+        
+        const settlementCard = document.createElement('div');
+        settlementCard.className = 'task-card payment-task';
+        settlementCard.style.borderLeft = '4px solid var(--primary-color)';
+        settlementCard.innerHTML = `
+            <div class="task-header">
+                <div>
+                    <h3 class="task-title">💳 Payment: ${escapeHtml(fromMember.name)} → ${escapeHtml(toMember.name)}</h3>
+                    <p style="color: var(--text-secondary); margin-top: 0.25rem;">$${settlement.amount.toFixed(2)} payment needed</p>
+                </div>
+                <span class="task-status ${isCompleted ? 'completed' : 'pending'}">
+                    ${isCompleted ? 'Completed' : 'Pending'}
+                </span>
+            </div>
+            <div class="task-info">
+                <div><strong>From:</strong> ${escapeHtml(fromMember.name)}</div>
+                <div><strong>To:</strong> ${escapeHtml(toMember.name)}</div>
+                <div><strong>Amount:</strong> $${settlement.amount.toFixed(2)}</div>
+                ${isCompleted ? `<div><strong>Completed:</strong> ${formatDateTime(new Date())}</div>` : ''}
+            </div>
+            <div class="task-actions">
+                ${!isCompleted ? `
+                    <button class="btn btn-success btn-small complete-payment-btn" data-payment-id="${paymentId}">Complete Payment</button>
+                ` : ''}
+            </div>
+        `;
+        
+        // Add event listener
+        const completeBtn = settlementCard.querySelector('.complete-payment-btn');
+        if (completeBtn) {
+            completeBtn.addEventListener('click', () => {
+                completePayment(paymentId);
+            });
+        }
+        
+        container.appendChild(settlementCard);
+    });
+}
+
+function saveExpenses() {
+    localStorage.setItem('roommateExpenses', JSON.stringify(expenses));
+}
+
+function saveTasks() {
+    localStorage.setItem('roommateTasks', JSON.stringify(tasks));
+    localStorage.setItem('roommateMembers', JSON.stringify(members));
+    saveExpenses();
+}
+
+// Note: There may be another saveTasks function later in the file - this is the main one
 
 function createTask() {
     const title = document.getElementById('task-title').value;
@@ -219,12 +544,99 @@ function renderDashboard() {
         .slice(0, 5);
     
     renderTasksList(upcomingTasks, 'upcoming-tasks-list');
+    
+    // Show pending payments/settlements
+    renderDashboardSettlements();
+}
+
+function renderDashboardSettlements() {
+    const container = document.getElementById('dashboard-settlements-list');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    if (expenses.length === 0 || members.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 1rem;">No pending payments.</p>';
+        return;
+    }
+    
+    const settlements = calculateSettlements();
+    
+    // Filter out completed payments
+    const pendingSettlements = settlements.filter(settlement => {
+        const paymentId = `payment-${settlement.from}-${settlement.to}`;
+        return !completedPayments.includes(paymentId);
+    });
+    
+    if (pendingSettlements.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: var(--success-color); padding: 1rem; font-weight: 600;">✅ Everyone is settled up!</p>';
+        return;
+    }
+    
+    // Show first 5 pending settlements
+    pendingSettlements.slice(0, 5).forEach(settlement => {
+        const fromMember = members.find(m => m.id === settlement.from);
+        const toMember = members.find(m => m.id === settlement.to);
+        
+        if (!fromMember || !toMember) return;
+        
+        const settlementCard = document.createElement('div');
+        settlementCard.className = 'task-card';
+        settlementCard.style.borderLeft = '4px solid var(--primary-color)';
+        settlementCard.style.padding = '1rem';
+        settlementCard.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <div style="font-size: 1rem; font-weight: 600; margin-bottom: 0.25rem;">
+                        ${escapeHtml(fromMember.name)} → ${escapeHtml(toMember.name)}
+                    </div>
+                    <div style="color: var(--text-secondary); font-size: 0.875rem;">
+                        Payment needed
+                    </div>
+                </div>
+                <div style="font-size: 1.25rem; font-weight: 700; color: var(--primary-color);">
+                    $${settlement.amount.toFixed(2)}
+                </div>
+            </div>
+        `;
+        
+        container.appendChild(settlementCard);
+    });
+    
+    if (pendingSettlements.length > 5) {
+        const moreCard = document.createElement('div');
+        moreCard.style.textAlign = 'center';
+        moreCard.style.padding = '0.5rem';
+        moreCard.style.color = 'var(--text-secondary)';
+        moreCard.innerHTML = `+ ${pendingSettlements.length - 5} more payment${pendingSettlements.length - 5 > 1 ? 's' : ''}`;
+        container.appendChild(moreCard);
+    }
 }
 
 // All Tasks Page
 function renderAllTasks() {
+    setupPersonFilter();
     renderTasksList(tasks, 'all-tasks-list');
     setupFilterButtons();
+}
+
+function setupPersonFilter() {
+    const personFilter = document.getElementById('person-filter');
+    if (!personFilter) return;
+    
+    // Populate person filter
+    personFilter.innerHTML = '<option value="">All People</option>';
+    members.forEach(member => {
+        const option = document.createElement('option');
+        option.value = member.id;
+        option.textContent = member.name;
+        personFilter.appendChild(option);
+    });
+    
+    // Add event listener
+    personFilter.addEventListener('change', () => {
+        applyFilters();
+    });
 }
 
 function setupFilterButtons() {
@@ -234,24 +646,76 @@ function setupFilterButtons() {
             filterBtns.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             
-            const filter = btn.getAttribute('data-filter');
-            filterTasks(filter);
+            applyFilters();
         });
     });
 }
 
-function filterTasks(filter) {
-    let filteredTasks = tasks;
+function applyFilters() {
+    const activeFilterBtn = document.querySelector('.filter-btn.active');
+    const filter = activeFilterBtn ? activeFilterBtn.getAttribute('data-filter') : 'all';
+    const personFilter = document.getElementById('person-filter');
+    const selectedPersonId = personFilter ? parseInt(personFilter.value) : null;
     
+    filterTasks(filter, selectedPersonId);
+}
+
+function filterTasks(filter, personId = null) {
+    let filteredTasks = [...tasks];
+    
+    // Add payment tasks
+    const paymentTasks = getPaymentTasks();
+    filteredTasks = filteredTasks.concat(paymentTasks);
+    
+    // Apply status filter
     if (filter === 'pending') {
-        filteredTasks = tasks.filter(t => t.status === 'pending' && !isOverdue(t));
+        filteredTasks = filteredTasks.filter(t => t.status === 'pending' && !isOverdue(t));
     } else if (filter === 'completed') {
-        filteredTasks = tasks.filter(t => t.status === 'completed');
+        filteredTasks = filteredTasks.filter(t => t.status === 'completed');
     } else if (filter === 'overdue') {
-        filteredTasks = tasks.filter(t => isOverdue(t) && t.status !== 'completed');
+        filteredTasks = filteredTasks.filter(t => isOverdue(t) && t.status !== 'completed');
+    }
+    
+    // Apply person filter
+    if (personId) {
+        filteredTasks = filteredTasks.filter(t => {
+            if (t.isPayment) {
+                return t.assignedTo === personId;
+            }
+            return t.assignedTo === personId || t.assignedBy === personId;
+        });
     }
     
     renderTasksList(filteredTasks, 'all-tasks-list');
+}
+
+function getPaymentTasks() {
+    if (expenses.length === 0 || members.length === 0) return [];
+    
+    const settlements = calculateSettlements();
+    const paymentTasks = [];
+    
+    settlements.forEach(settlement => {
+        const paymentId = `payment-${settlement.from}-${settlement.to}`;
+        const isCompleted = completedPayments.includes(paymentId);
+        
+        paymentTasks.push({
+            id: paymentId,
+            title: `Payment: ${members.find(m => m.id === settlement.from)?.name || 'Unknown'} → ${members.find(m => m.id === settlement.to)?.name || 'Unknown'}`,
+            description: `$${settlement.amount.toFixed(2)} payment needed`,
+            assignedTo: settlement.from,
+            assignedBy: settlement.to,
+            deadline: Date.now(),
+            status: isCompleted ? 'completed' : 'pending',
+            completedAt: isCompleted ? Date.now() : null,
+            isPayment: true,
+            amount: settlement.amount,
+            fromId: settlement.from,
+            toId: settlement.to
+        });
+    });
+    
+    return paymentTasks;
 }
 
 function renderTasksList(taskList, containerId) {
@@ -271,58 +735,108 @@ function renderTasksList(taskList, containerId) {
 
 function createTaskCard(task) {
     const card = document.createElement('div');
-    card.className = `task-card ${task.status} ${isOverdue(task) && task.status !== 'completed' ? 'overdue' : ''}`;
+    const isPayment = task.isPayment || false;
+    const cardClass = isPayment ? 'task-card payment-task' : `task-card ${task.status}`;
+    card.className = `${cardClass} ${isOverdue(task) && task.status !== 'completed' ? 'overdue' : ''}`;
     
     const assignedToMember = members.find(m => m.id === task.assignedTo);
     const assignedByMember = members.find(m => m.id === task.assignedBy);
     const deadline = new Date(task.deadline);
     const isTaskOverdue = isOverdue(task) && task.status !== 'completed';
     
-    card.innerHTML = `
-        <div class="task-header">
-            <div>
-                <h3 class="task-title">${escapeHtml(task.title)}</h3>
-                ${task.description ? `<p style="color: var(--text-secondary); margin-top: 0.25rem;">${escapeHtml(task.description)}</p>` : ''}
+    if (isPayment) {
+        // Payment task card
+        const fromMember = members.find(m => m.id === task.fromId);
+        const toMember = members.find(m => m.id === task.toId);
+        
+        card.innerHTML = `
+            <div class="task-header">
+                <div>
+                    <h3 class="task-title">💳 ${escapeHtml(task.title)}</h3>
+                    <p style="color: var(--text-secondary); margin-top: 0.25rem;">${escapeHtml(task.description)}</p>
+                </div>
+                <span class="task-status ${task.status}">
+                    ${task.status.charAt(0).toUpperCase() + task.status.slice(1)}
+                </span>
             </div>
-            <span class="task-status ${task.status} ${isTaskOverdue ? 'overdue' : ''}">
-                ${isTaskOverdue ? 'Overdue' : task.status.charAt(0).toUpperCase() + task.status.slice(1)}
-            </span>
-        </div>
-        <div class="task-info">
-            <div><strong>Assigned To:</strong> ${assignedToMember ? assignedToMember.name : 'Unknown'}</div>
-            <div><strong>Assigned By:</strong> ${assignedByMember ? assignedByMember.name : 'Unknown'}</div>
-            <div><strong>Deadline:</strong> ${formatDateTime(deadline)}</div>
-            ${task.status === 'completed' && task.completedAt ? `<div><strong>Completed:</strong> ${formatDateTime(new Date(task.completedAt))}</div>` : ''}
-        </div>
-        <div class="task-actions">
-            ${task.status === 'pending' && isTaskOverdue ? `
-                <button class="btn btn-primary btn-small verify-task-btn" data-task-id="${task.id}">Verify Completion</button>
-            ` : ''}
-            ${task.status === 'pending' && !isTaskOverdue && new Date(task.deadline) <= new Date() ? `
-                <button class="btn btn-primary btn-small verify-task-btn" data-task-id="${task.id}">Verify Completion</button>
-            ` : ''}
-            ${task.status === 'pending' ? `
-                <button class="btn btn-danger btn-small delete-task-btn" data-task-id="${task.id}">Delete</button>
-            ` : ''}
-        </div>
-    `;
-    
-    // Add event listeners
-    const verifyBtn = card.querySelector('.verify-task-btn');
-    if (verifyBtn) {
-        verifyBtn.addEventListener('click', () => openVerificationModal(task));
-    }
-    
-    const deleteBtn = card.querySelector('.delete-task-btn');
-    if (deleteBtn) {
-        deleteBtn.addEventListener('click', () => {
-            if (confirm('Are you sure you want to delete this task?')) {
-                deleteTask(task.id);
-            }
-        });
+            <div class="task-info">
+                <div><strong>From:</strong> ${fromMember ? fromMember.name : 'Unknown'}</div>
+                <div><strong>To:</strong> ${toMember ? toMember.name : 'Unknown'}</div>
+                <div><strong>Amount:</strong> $${task.amount ? task.amount.toFixed(2) : '0.00'}</div>
+                ${task.status === 'completed' && task.completedAt ? `<div><strong>Completed:</strong> ${formatDateTime(new Date(task.completedAt))}</div>` : ''}
+            </div>
+            <div class="task-actions">
+                ${task.status === 'pending' ? `
+                    <button class="btn btn-success btn-small complete-payment-btn" data-payment-id="${task.id}">Complete Payment</button>
+                ` : ''}
+            </div>
+        `;
+        
+        // Add event listener for payment tasks
+        const completeBtn = card.querySelector('.complete-payment-btn');
+        if (completeBtn) {
+            completeBtn.addEventListener('click', () => {
+                completePayment(task.id);
+            });
+        }
+    } else {
+        // Regular task card
+        card.innerHTML = `
+            <div class="task-header">
+                <div>
+                    <h3 class="task-title">${escapeHtml(task.title)}</h3>
+                    ${task.description ? `<p style="color: var(--text-secondary); margin-top: 0.25rem;">${escapeHtml(task.description)}</p>` : ''}
+                </div>
+                <span class="task-status ${task.status} ${isTaskOverdue ? 'overdue' : ''}">
+                    ${isTaskOverdue ? 'Overdue' : task.status.charAt(0).toUpperCase() + task.status.slice(1)}
+                </span>
+            </div>
+            <div class="task-info">
+                <div><strong>Assigned To:</strong> ${assignedToMember ? assignedToMember.name : 'Unknown'}</div>
+                <div><strong>Assigned By:</strong> ${assignedByMember ? assignedByMember.name : 'Unknown'}</div>
+                <div><strong>Deadline:</strong> ${formatDateTime(deadline)}</div>
+                ${task.status === 'completed' && task.completedAt ? `<div><strong>Completed:</strong> ${formatDateTime(new Date(task.completedAt))}</div>` : ''}
+            </div>
+            <div class="task-actions">
+                ${task.status === 'pending' ? `
+                    <button class="btn btn-primary btn-small verify-task-btn" data-task-id="${task.id}">Verify Completion</button>
+                    <button class="btn btn-danger btn-small delete-task-btn" data-task-id="${task.id}">Delete</button>
+                ` : ''}
+            </div>
+        `;
+        
+        // Add event listeners for regular tasks
+        const verifyBtn = card.querySelector('.verify-task-btn');
+        if (verifyBtn) {
+            verifyBtn.addEventListener('click', () => openVerificationModal(task));
+        }
+        
+        const deleteBtn = card.querySelector('.delete-task-btn');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', () => {
+                if (confirm('Are you sure you want to delete this task?')) {
+                    deleteTask(task.id);
+                }
+            });
+        }
     }
     
     return card;
+}
+
+function completePayment(paymentId) {
+    if (!completedPayments.includes(paymentId)) {
+        completedPayments.push(paymentId);
+        saveCompletedPayments();
+        renderAllTasks();
+        renderDashboard();
+        renderMembers();
+        renderSettlements();
+    }
+}
+
+function saveCompletedPayments() {
+    localStorage.setItem('completedPayments', JSON.stringify(completedPayments));
 }
 
 // Members Page
@@ -338,12 +852,23 @@ function renderMembers() {
 
 function createMemberCard(member) {
     const memberTasks = tasks.filter(t => t.assignedTo === member.id);
+    
+    // Get payment tasks for this member
+    const paymentTasks = getPaymentTasks().filter(pt => pt.assignedTo === member.id);
+    const allTasks = [...memberTasks, ...paymentTasks];
+    
     const completedTasks = memberTasks.filter(t => t.status === 'completed').length;
+    const completedPayments = paymentTasks.filter(pt => pt.status === 'completed').length;
+    const totalCompleted = completedTasks + completedPayments;
+    
     const pendingTasks = memberTasks.filter(t => t.status === 'pending' && !isOverdue(t)).length;
+    const pendingPayments = paymentTasks.filter(pt => pt.status === 'pending').length;
+    
     const overdueTasks = memberTasks.filter(t => isOverdue(t) && t.status !== 'completed').length;
-    // Start at 100% when no tasks, then show actual completion rate
-    const completionRate = memberTasks.length > 0 
-        ? Math.round((completedTasks / memberTasks.length) * 100) 
+    
+    // Calculate completion rate including payments
+    const completionRate = allTasks.length > 0 
+        ? Math.round((totalCompleted / allTasks.length) * 100) 
         : 100;
     
     const card = document.createElement('div');
@@ -362,8 +887,12 @@ function createMemberCard(member) {
                 <span class="stat-value">${memberTasks.length}</span>
             </div>
             <div class="stat-item">
+                <span class="stat-label">Pending Payments</span>
+                <span class="stat-value" style="color: var(--primary-color);">${pendingPayments}</span>
+            </div>
+            <div class="stat-item">
                 <span class="stat-label">Completed</span>
-                <span class="stat-value" style="color: var(--success-color);">${completedTasks}</span>
+                <span class="stat-value" style="color: var(--success-color);">${totalCompleted} (${completedTasks} tasks${completedPayments > 0 ? `, ${completedPayments} payments` : ''})</span>
             </div>
             <div class="stat-item">
                 <span class="stat-label">Pending</span>
@@ -917,10 +1446,7 @@ function deleteTask(taskId) {
     renderMembers();
 }
 
-function saveTasks() {
-    localStorage.setItem('roommateTasks', JSON.stringify(tasks));
-    localStorage.setItem('roommateMembers', JSON.stringify(members));
-}
+// Duplicate saveTasks removed - using the one above that includes saveExpenses()
 
 function formatDateTime(date) {
     return date.toLocaleString('en-US', {

@@ -10,12 +10,19 @@
     <!-- Navigation -->
     <nav class="navbar">
         <div class="nav-container">
-            <h1 class="logo">🏠 Roommate Manager</h1>
+            <h1 class="logo">
+                <img src="Logo.png" alt="RoomM8 UpD8" class="logo-image" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <span class="logo-text" style="display: none;">
+                    <span class="logo-line1">RoomM8</span>
+                    <span class="logo-line2">UpD8</span>
+                </span>
+            </h1>
             <ul class="nav-menu">
                 <li><a href="#" data-page="dashboard" class="nav-link active">Dashboard</a></li>
                 <li><a href="#" data-page="tasks" class="nav-link">All Tasks</a></li>
-                <li><a href="#" data-page="members" class="nav-link">RoomM8s</a></li>
                 <li><a href="#" data-page="add-task" class="nav-link">Add Task</a></li>
+                <li><a href="#" data-page="expenses" class="nav-link">Expenses</a></li>
+                <li><a href="#" data-page="members" class="nav-link">RoomM8s</a></li>
             </ul>
         </div>
     </nav>
@@ -42,6 +49,10 @@
                 <h3>Upcoming Tasks</h3>
                 <div id="upcoming-tasks-list" class="tasks-list"></div>
             </div>
+            <div class="dashboard-settlements" style="margin-top: 2rem;">
+                <h3>Pending Payments</h3>
+                <div id="dashboard-settlements-list" class="settlements-list"></div>
+            </div>
         </div>
     </div>
 
@@ -54,6 +65,9 @@
                 <button class="filter-btn" data-filter="pending">Pending</button>
                 <button class="filter-btn" data-filter="completed">Completed</button>
                 <button class="filter-btn" data-filter="overdue">Overdue</button>
+                <select id="person-filter" class="filter-select" style="margin-left: 1rem; padding: 0.5rem 1rem; border: 1px solid var(--border-color); border-radius: 0.5rem; background: var(--card-bg); cursor: pointer;">
+                    <option value="">All People</option>
+                </select>
             </div>
             <div id="all-tasks-list" class="tasks-list"></div>
         </div>
@@ -130,6 +144,45 @@
                 </div>
             </div>
             <div id="verification-status" class="verification-status"></div>
+        </div>
+    </div>
+
+    <!-- Expenses Page -->
+    <div id="expenses" class="page">
+        <div class="container">
+            <h2>Expenses</h2>
+            <div class="add-expense-section" style="margin-bottom: 2rem;">
+                <h3 style="margin-bottom: 1rem;">Add New Expense</h3>
+                <form id="expense-form" class="task-form" style="max-width: 600px;">
+                    <div class="form-group">
+                        <label for="expense-description">What was purchased?</label>
+                        <input type="text" id="expense-description" required placeholder="e.g., Groceries, Rent, Utilities">
+                    </div>
+                    <div class="form-group">
+                        <label for="expense-amount">Amount ($)</label>
+                        <input type="number" id="expense-amount" required step="0.01" min="0.01" placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label for="expense-paid-by">Paid By</label>
+                        <select id="expense-paid-by" required>
+                            <option value="">Select who paid...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Split Among (select all who should contribute)</label>
+                        <div id="expense-split-checkboxes" class="checkbox-group"></div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Expense</button>
+                </form>
+            </div>
+            <div class="expenses-list-section">
+                <h3 style="margin-bottom: 1rem;">All Expenses</h3>
+                <div id="expenses-list" class="expenses-list"></div>
+            </div>
+            <div class="settlements-section" style="margin-top: 3rem;">
+                <h3 style="margin-bottom: 1rem;">Settlements</h3>
+                <div id="settlements-list" class="settlements-list"></div>
+            </div>
         </div>
     </div>
 
