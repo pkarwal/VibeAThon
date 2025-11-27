@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roommate Manager</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <h1 class="logo">🏠 Roommate Manager</h1>
+            <ul class="nav-menu">
+                <li><a href="#" data-page="dashboard" class="nav-link active">Dashboard</a></li>
+                <li><a href="#" data-page="tasks" class="nav-link">All Tasks</a></li>
+                <li><a href="#" data-page="members" class="nav-link">RoomM8s</a></li>
+                <li><a href="#" data-page="add-task" class="nav-link">Add Task</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Dashboard Page -->
+    <div id="dashboard" class="page active">
+        <div class="container">
+            <h2>Dashboard</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Pending Tasks</h3>
+                    <p class="stat-number" id="pending-count">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Completed Today</h3>
+                    <p class="stat-number" id="completed-today">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Overdue</h3>
+                    <p class="stat-number overdue" id="overdue-count">0</p>
+                </div>
+            </div>
+            <div class="upcoming-tasks">
+                <h3>Upcoming Tasks</h3>
+                <div id="upcoming-tasks-list" class="tasks-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- All Tasks Page -->
+    <div id="tasks" class="page">
+        <div class="container">
+            <h2>All Tasks</h2>
+            <div class="filter-bar">
+                <button class="filter-btn active" data-filter="all">All</button>
+                <button class="filter-btn" data-filter="pending">Pending</button>
+                <button class="filter-btn" data-filter="completed">Completed</button>
+                <button class="filter-btn" data-filter="overdue">Overdue</button>
+            </div>
+            <div id="all-tasks-list" class="tasks-list"></div>
+        </div>
+    </div>
+
+    <!-- Roommates Page -->
+    <div id="members" class="page">
+        <div class="container">
+            <h2>RoomM8s</h2>
+            <div class="add-roommate-section" style="margin-bottom: 2rem;">
+                <h3 style="margin-bottom: 1rem;">Add New Roommate</h3>
+                <form id="roommate-form" class="task-form" style="max-width: 400px;">
+                    <div class="form-group">
+                        <label for="roommate-name">Roommate Name</label>
+                        <input type="text" id="roommate-name" required placeholder="e.g., Alex" maxlength="20">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Roommate</button>
+                </form>
+            </div>
+            <div class="members-grid" id="members-list"></div>
+        </div>
+    </div>
+
+    <!-- Add Task Page -->
+    <div id="add-task" class="page">
+        <div class="container">
+            <h2>Add New Task</h2>
+            <form id="task-form" class="task-form">
+                <div class="form-group">
+                    <label for="task-title">Task Title</label>
+                    <input type="text" id="task-title" required placeholder="e.g., Clean the kitchen">
+                </div>
+                <div class="form-group">
+                    <label for="task-description">Description</label>
+                    <textarea id="task-description" rows="3" placeholder="Describe what needs to be done..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="task-assigned-to">Assign To</label>
+                    <select id="task-assigned-to" required>
+                        <option value="">Select a roommate...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="task-assigned-by">Assigned By</label>
+                    <select id="task-assigned-by" required>
+                        <option value="">Select a roommate...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="task-deadline">Deadline</label>
+                    <input type="datetime-local" id="task-deadline" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Create Task</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Task Verification Modal -->
+    <div id="verification-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2>Verify Task Completion</h2>
+            <div id="verification-task-info"></div>
+            <div class="upload-section">
+                <input type="file" id="fileInput" accept="image/*" multiple style="display: none;">
+                <div id="uploadArea" class="upload-area">
+                    <p>📷 Click or drag & drop photos here</p>
+                    <p style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">Upload photo(s) of your completed task</p>
+                </div>
+                <div id="uploadPreview" class="upload-preview"></div>
+                <div class="upload-controls">
+                    <button id="clear-uploads-btn" class="btn btn-secondary" style="display: none;">Clear Photos</button>
+                    <button id="verify-btn" class="btn btn-success" style="display: none;">Verify Task</button>
+                </div>
+            </div>
+            <div id="verification-status" class="verification-status"></div>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div id="notification-container" class="notification-container"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+
